@@ -34,64 +34,63 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
   }
 
-  testWidgets(
-    'desktop dashboard shows Dix cards and globe without games',
-    (tester) async {
-      await prepare(tester, const Size(1240, 820));
-      final model = DixController.fixture();
-      await render(tester, model);
-      expect(find.byType(DixGlobe), findsOneWidget);
-      expect(find.text('СКОРОСТЬ'), findsOneWidget);
-      expect(find.text('ВАШ IP-АДРЕС'), findsOneWidget);
-      expect(find.text('СЕРВЕР'), findsOneWidget);
-      expect(find.textContaining('Спиннер'), findsNothing);
-      expect(find.textContaining('Рулетка'), findsNothing);
-      expect(tester.takeException(), isNull);
-      await expectLater(
-        find.byType(DixApp),
-        matchesGoldenFile('goldens/minimal-desktop.png'),
-      );
-      await tester.tap(find.byKey(const Key('edit-home')));
-      await tester.pumpAndSettle();
-      await expectLater(
-        find.byType(DixApp),
-        matchesGoldenFile('goldens/home-editor-desktop.png'),
-      );
-      final start = tester.getCenter(find.byKey(const Key('home-drag-ip')));
-      final slot =
-          tester.getTopLeft(find.byKey(const ValueKey('home-tile-server'))) +
-          const Offset(4, -7);
-      final drag = await tester.startGesture(start);
-      await drag.moveTo(start + const Offset(0, 12));
-      await tester.pump();
-      await drag.moveTo(slot);
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(find.byKey(const Key('home-drop-placeholder')), findsOneWidget);
-      await expectLater(
-        find.byType(DixApp),
-        matchesGoldenFile('goldens/home-drag-preview-desktop.png'),
-      );
-      await drag.moveTo(const Offset(-20, -20));
-      await drag.up();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('home-drop-placeholder')), findsNothing);
-      expect(model.settings['flutterHomeLayout'], isNull);
+  testWidgets('desktop dashboard shows Dix cards and globe without games', (
+    tester,
+  ) async {
+    await prepare(tester, const Size(1240, 820));
+    final model = DixController.fixture();
+    await render(tester, model);
+    expect(find.byType(DixGlobe), findsOneWidget);
+    expect(find.text('СКОРОСТЬ'), findsOneWidget);
+    expect(find.text('ВАШ IP-АДРЕС'), findsOneWidget);
+    expect(find.text('СЕРВЕР'), findsOneWidget);
+    expect(find.textContaining('Спиннер'), findsNothing);
+    expect(find.textContaining('Рулетка'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(DixApp),
+      matchesGoldenFile('goldens/minimal-desktop.png'),
+    );
+    await tester.tap(find.byKey(const Key('edit-home')));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(DixApp),
+      matchesGoldenFile('goldens/home-editor-desktop.png'),
+    );
+    final start = tester.getCenter(find.byKey(const Key('home-drag-ip')));
+    final slot =
+        tester.getTopLeft(find.byKey(const ValueKey('home-tile-server'))) +
+        const Offset(4, -7);
+    final drag = await tester.startGesture(start);
+    await drag.moveTo(start + const Offset(0, 12));
+    await tester.pump();
+    await drag.moveTo(slot);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const Key('home-drop-placeholder')), findsOneWidget);
+    await expectLater(
+      find.byType(DixApp),
+      matchesGoldenFile('goldens/home-drag-preview-desktop.png'),
+    );
+    await drag.moveTo(const Offset(-20, -20));
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home-drop-placeholder')), findsNothing);
+    expect(model.settings['flutterHomeLayout'], isNull);
 
-      await tester.tap(find.byKey(const Key('edit-home')));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('server-search')), 'Польша');
-      await tester.pump();
-      expect(find.text('Германия'), findsNothing);
-      expect(
-        find.byWidgetPredicate(
-          (widget) => widget is Text && widget.data == 'Польша',
-        ),
-        findsOneWidget,
-      );
-      await tester.pumpWidget(const SizedBox());
-      model.dispose();
-    },
-  );
+    await tester.tap(find.byKey(const Key('edit-home')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('server-search')), 'Польша');
+    await tester.pump();
+    expect(find.text('Германия'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.data == 'Польша',
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+    model.dispose();
+  });
   testWidgets(
     'iPhone width remains usable; Classic can be restored without losing rules',
     (tester) async {
@@ -182,7 +181,7 @@ void main() {
     expect(find.text('Тайм-аут пинга'), findsOneWidget);
     await tester.tap(find.byKey(const Key('settings-updates')));
     await tester.pumpAndSettle();
-    expect(find.text('Dix 0.2.3'), findsOneWidget);
+    expect(find.text('Dix 0.2.4'), findsOneWidget);
     expect(find.text('boutlyfe/dix-client'), findsOneWidget);
     expect(find.textContaining('отдельное хранилище'), findsNothing);
     await expectLater(

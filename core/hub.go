@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"runtime"
 	"sort"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/common/observable"
 	"github.com/metacubex/mihomo/common/utils"
+	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/mmdb"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/updater"
@@ -29,10 +31,10 @@ import (
 )
 
 var (
-	isInit                = false
-	externalProviders     = map[string]cp.Provider{}
-	logSubscriber         observable.Subscription[log.Event]
-	proxyDescriptions     = map[string]string{} // Store serverDescription for each proxy
+	isInit            = false
+	externalProviders = map[string]cp.Provider{}
+	logSubscriber     observable.Subscription[log.Event]
+	proxyDescriptions = map[string]string{} // Store serverDescription for each proxy
 )
 
 func handleInitClash(paramsString string) bool {
@@ -57,6 +59,35 @@ func handleStartListener() bool {
 	updateListeners()
 	resolver.ResetConnection()
 	return true
+}
+
+func handleGetTunStatus() map[string]interface{} {
+	enabled, device, startError := listener.TunStatus()
+	// Use the same interface selection as outbound sockets. While TUN is live,
+	// its monitor knows the underlying default route before TUN interception.
+	// An independent probe core can bind to this interface to avoid nesting its
+	// TCP sockets inside the already active VPN tunnel.
+	outboundInterface := dialer.DefaultInterface.Load()
+	if outboundInterface == "" {
+		if finder := dialer.DefaultInterfaceFinder.Load(); finder != nil {
+			outboundInterface = finder.FindInterfaceName(netip.IPv4Unspecified())
+		}
+	}
+	if outboundInterface == device || outboundInterface == "<invalid>" {
+		outboundInterface = ""
+	}
+	if outboundInterface != "" {
+		iface, err := net.InterfaceByName(outboundInterface)
+		if err != nil || iface.Flags&net.FlagLoopback != 0 {
+			outboundInterface = ""
+		}
+	}
+	return map[string]interface{}{
+		"enabled":           enabled,
+		"device":            device,
+		"error":             startError,
+		"outboundInterface": outboundInterface,
+	}
 }
 
 func handleStopListener() bool {
@@ -100,10 +131,10 @@ func extractProxyDescriptionsFromRaw(rawConfig *config.RawConfig) {
 	if rawConfig == nil || rawConfig.Proxy == nil {
 		return
 	}
-	
+
 	// Clear previous descriptions
 	proxyDescriptions = make(map[string]string)
-	
+
 	// Extract serverDescription from each proxy
 	for _, proxyMap := range rawConfig.Proxy {
 		if name, ok := proxyMap["name"].(string); ok {
@@ -118,7 +149,7 @@ func handleGetProxies() interface{} {
 	runLock.Lock()
 	defer runLock.Unlock()
 	proxies := tunnel.ProxiesWithProviders()
-	
+
 	// Convert to map for JSON manipulation
 	result := make(map[string]interface{})
 	for name, proxy := range proxies {
@@ -128,7 +159,7 @@ func handleGetProxies() interface{} {
 			result[name] = proxy
 			continue
 		}
-		
+
 		// Unmarshal to map
 		var proxyMap map[string]interface{}
 		err = json.Unmarshal(proxyJSON, &proxyMap)
@@ -136,15 +167,15 @@ func handleGetProxies() interface{} {
 			result[name] = proxy
 			continue
 		}
-		
+
 		// Add serverDescription if exists
 		if desc, ok := proxyDescriptions[name]; ok {
 			proxyMap["serverDescription"] = desc
 		}
-		
+
 		result[name] = proxyMap
 	}
-	
+
 	return result
 }
 

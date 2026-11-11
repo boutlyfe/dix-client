@@ -155,6 +155,12 @@ Future<Map<String, dynamic>> probeCore(
       selected: {'Test route': 'Local tunnel'},
     );
     result['configurationApplied'] = true;
+    dynamic status = await rpc.call('getTunStatus', null);
+    if (status is String) status = jsonDecode(status);
+    if (status is! Map || status['enabled'] != false) {
+      throw StateError('Disabled TUN reported active');
+    }
+    result['actualTunStatusVerified'] = true;
     if (await request() != 'dix-core-ok' || outboundConnections == 0) {
       throw StateError('Selected proxy route did not reach loopback fixture');
     }

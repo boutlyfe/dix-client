@@ -382,6 +382,11 @@ class DixController extends ChangeNotifier {
         configuredProfile(source, selected: names.first),
         source.settings,
         names,
+        useActiveCore:
+            connected &&
+            id == _runningArchive?.activeId &&
+            jsonEncode(source.profiles[id]) ==
+                jsonEncode(_runningArchive?.profiles[id]),
         onResult: (name, value) {
           if (generation != _pingGeneration) return;
           _profileDelays.putIfAbsent(id, () => {})[name] = value;

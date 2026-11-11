@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'core_rpc.dart';
+import 'core_status.dart';
 
 /// One configuration path is used by the app and the isolated real-engine test.
 /// Imported listeners and control APIs must not bind unexpected system ports.
@@ -129,5 +130,8 @@ Future<void> applyCoreProfile(
   );
   if (startListener) {
     check(await rpc.call('startListener', null, const Duration(seconds: 60)));
+    if (tun) {
+      await requireStartedTun((method, data) => rpc.call(method, data));
+    }
   }
 }

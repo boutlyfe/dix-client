@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'model/controller.dart';
 import 'model/archive.dart';
+import 'model/rules.dart';
 import 'platform/platform.dart' as platform;
 import 'ui/shell.dart';
 
@@ -10,6 +11,30 @@ Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (arguments.length == 2 && arguments.first == '--self-test-core') {
     await platform.runNativeSelfTest(arguments.last);
+    return;
+  }
+  if (arguments.length == 2 && arguments.first == '--self-test-vpn') {
+    final controller = await DixController.load();
+    final cases = <Map<String, dynamic>>[];
+    for (final protocol in ['vless', 'hysteria2']) {
+      final selected = controller.selected;
+      final server = selected?.type == protocol
+          ? selected
+          : controller.servers
+                .where((server) => server.type == protocol)
+                .firstOrNull;
+      if (server == null) continue;
+      final archive = controller.archive.clone();
+      archive.settings['currentServer'] = server.name;
+      archive.settings['netMode'] = 'tun';
+      cases.add({
+        'protocol': protocol,
+        'server': server.name,
+        'profile': configuredProfile(archive, selected: server.name),
+        'settings': archive.settings,
+      });
+    }
+    await platform.runNativeVpnSelfTest(arguments.last, cases);
     return;
   }
   const preview = bool.fromEnvironment('DIX_PREVIEW');

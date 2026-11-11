@@ -8,6 +8,33 @@ class ManualRoutingProfile {
   final String rootGroup;
 }
 
+/// Resolve the main destination from the effective catch-all rule. Provider
+/// group order does not indicate which group application rules actually use.
+String? mainRoutingGroup(Map<String, dynamic> profile) {
+  final groups =
+      (profile['proxy-groups'] ?? profile['proxyGroups'] ?? []) as List;
+  final names = groups
+      .whereType<Map>()
+      .map((group) => group['name']?.toString())
+      .whereType<String>()
+      .where((name) => name.isNotEmpty)
+      .toList();
+  final rules = (profile['rule'] ?? profile['rules'] ?? []) as List;
+  for (final rule in rules.whereType<String>()) {
+    final match = RegExp(
+      r'^\s*(?:MATCH|FINAL)\s*,\s*(.+?)\s*$',
+      caseSensitive: false,
+    ).firstMatch(rule);
+    if (match == null) continue;
+    final target = match.group(1)!;
+    // DIRECT/REJECT are explicit policies, never rewrite them as a VPN root.
+    return target != 'DIRECT' && target != 'REJECT' && names.contains(target)
+        ? target
+        : names.firstOrNull;
+  }
+  return names.firstOrNull;
+}
+
 /// Adds an app-owned selection point without converting automatic groups or
 /// changing explicit rule destinations. The imported document stays intact.
 ManualRoutingProfile prepareManualRoutingProfile(
@@ -28,10 +55,7 @@ ManualRoutingProfile prepareManualRoutingProfile(
       .toSet()
       .toList();
   if (nodes.isEmpty) throw StateError('В профиле нет серверов для выбора.');
-  final root =
-      rootGroup ??
-      groups.whereType<Map>().firstOrNull?['name']?.toString() ??
-      selectedServer;
+  final root = rootGroup ?? mainRoutingGroup(profile) ?? selectedServer;
   final names = {
     ...nodes,
     for (final group in groups.whereType<Map>()) group['name']?.toString(),

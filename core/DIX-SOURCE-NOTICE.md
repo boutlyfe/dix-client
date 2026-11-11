@@ -14,7 +14,7 @@ files, rather than those commit identifiers alone, define this source snapshot.
 
 The original GPL version 3 license texts are preserved in `LICENSE` and
 `Clash.Meta/LICENSE`. Existing copyright and attribution notices are preserved.
-The only branding change in this snapshot is `constant.MihomoName` from
+The display branding change is `constant.MihomoName` from
 `FlClashX` to `Dix`. Compiler paths are removed using Go's `-trimpath` option.
 
 Build from this directory with Go 1.26.1, using PowerShell:
@@ -30,3 +30,7 @@ go build -mod=readonly -trimpath -buildvcs=false -ldflags '-s -w -buildid=' -o .
 Pinned module requirements and checksums are present in `go.mod` and `go.sum`.
 Use the same compiler version, source snapshot, module files, environment and
 build flags when comparing reproducible build hashes.
+
+Dix also adds an actual TUN listener status RPC, including startup errors and
+the physical outbound interface, so the client can verify the adapter and bind
+independent latency probes correctly. Corresponding listener tests are included.

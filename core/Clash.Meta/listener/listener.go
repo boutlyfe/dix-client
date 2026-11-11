@@ -42,6 +42,7 @@ var (
 	tunnelUDPListeners  = map[string]*LT.PacketConn{}
 	inboundListeners    = map[string]C.InboundListener{}
 	tunLister           *sing_tun.Listener
+	tunStartError       string
 	shadowSocksListener C.MultiAddrListener
 	vmessListener       *sing_vmess.Listener
 	tuicListener        *tuic.Listener
@@ -78,6 +79,17 @@ func GetTunConf() LC.Tun {
 		return LastTunConf
 	}
 	return tunLister.Config()
+}
+
+// TunStatus reports the live listener, rather than the last requested config.
+// Opening the mixed proxy port does not establish that TUN initialization worked.
+func TunStatus() (enabled bool, device string, startError string) {
+	tunMux.Lock()
+	defer tunMux.Unlock()
+	if tunLister != nil {
+		return true, tunLister.Config().Device, ""
+	}
+	return false, "", tunStartError
 }
 
 func GetTuicConf() LC.TuicServer {
@@ -498,6 +510,7 @@ func ReCreateTun(tunConf LC.Tun, tunnel C.Tunnel) {
 	tunConf.Sort()
 
 	tunMux.Lock()
+	tunStartError = ""
 	defer func() {
 		LastTunConf = tunConf
 		tunMux.Unlock()
@@ -506,6 +519,7 @@ func ReCreateTun(tunConf LC.Tun, tunnel C.Tunnel) {
 	var err error
 	defer func() {
 		if err != nil {
+			tunStartError = err.Error()
 			log.Errorln("Start TUN listening error: %s", err.Error())
 			tunConf.Enable = false
 		}

@@ -1136,7 +1136,9 @@ class _DixShellState extends State<DixShell> {
           ),
           const SizedBox(height: 4),
           Text(
-            value == 'minimal' ? 'Простой и спокойный' : 'Стекло и бирюзовый акцент',
+            value == 'minimal'
+                ? 'Простой и спокойный'
+                : 'Стекло и бирюзовый акцент',
             style: TextStyle(fontSize: 10, color: muted(context)),
           ),
         ],

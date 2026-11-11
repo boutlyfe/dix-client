@@ -41,6 +41,11 @@ jobs:
           $spec = Get-Content pubspec.yaml -Raw
           if ($spec -notmatch '(?m)^version:\s*([^+\s]+)') { throw 'Missing version' }
           if ($env:RELEASE_TAG -ne "v$($Matches[1])") { throw 'Release tag must match pubspec.yaml version' }
+      - name: Test actual TUN status reporting
+        working-directory: core/Clash.Meta
+        env:
+          CGO_ENABLED: '0'
+        run: go test ./listener -run 'Test(TunStatus|DisabledTun)' -count=1
       - name: Build DixCore from source
         run: ./scripts/build-core.ps1
       - name: Install Flutter dependencies
@@ -59,7 +64,7 @@ jobs:
           if (-not $process.WaitForExit(90000)) { Stop-Process -Id $process.Id -Force; throw 'Native core test timed out' }
           if ($process.ExitCode -ne 0) { throw "Native core test failed ($($process.ExitCode))" }
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
-          foreach ($key in @('windowsJobAttached', 'initialized', 'invalidRuleRejected', 'configurationApplied', 'selectedProxyRouted', 'runtimeGroupSwitchVerified', 'directRouted', 'rejectBlocked', 'closeConnectionsVerified', 'trafficReadable', 'closed')) {
+          foreach ($key in @('windowsJobAttached', 'initialized', 'invalidRuleRejected', 'configurationApplied', 'selectedProxyRouted', 'runtimeGroupSwitchVerified', 'directRouted', 'rejectBlocked', 'closeConnectionsVerified', 'actualTunStatusVerified', 'trafficReadable', 'closed')) {
             if ($result.$key -ne $true) { throw "Native check failed: $key" }
           }
           Get-Content -LiteralPath $report

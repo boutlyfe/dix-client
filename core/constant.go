@@ -72,6 +72,7 @@ const (
 	messageMethod                  Method = "message"
 	initClashMethod                Method = "initClash"
 	getIsInitMethod                Method = "getIsInit"
+	getTunStatusMethod             Method = "getTunStatus"
 	forceGcMethod                  Method = "forceGc"
 	shutdownMethod                 Method = "shutdown"
 	validateConfigMethod           Method = "validateConfig"

@@ -79,6 +79,8 @@ Future<void> saveText(String name, String value) async {
 }
 
 CoreRpc? _core, _measurement;
+Object? _measurementToken;
+bool _measurementOwned = false;
 Map<String, dynamic>? _activeProfile, _activeSettings;
 String? _manualRoot;
 bool get nativeRuntimeAlive => _core?.isAlive == true;
@@ -87,7 +89,7 @@ ManualRoutingProfile _manualProfile(
   Map<String, dynamic> settings,
 ) {
   final groups = (profile['proxy-groups'] as List? ?? []).whereType<Map>();
-  var root = groups.firstOrNull?['name']?.toString();
+  var root = mainRoutingGroup(profile);
   if (root != null && root.contains(',')) {
     final alias = groups
         .where(
@@ -424,6 +426,81 @@ Future<Map<String, dynamic>> runWindowLifecycleSelfTest() async {
   };
 }
 
+Future<void> runNativeVpnSelfTest(
+  String output,
+  List<Map<String, dynamic>> cases,
+) async {
+  final report = <String, dynamic>{
+    'scope':
+        'temporary actual Windows TUN; settings unchanged; own adapter removed after test',
+    'cases': <Map<String, dynamic>>[],
+  };
+  var passed = cases.length == 2;
+  try {
+    for (final entry in cases) {
+      final row = <String, dynamic>{'protocol': entry['protocol']};
+      (report['cases'] as List).add(row);
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      try {
+        await startNativeVpn(
+          Map<String, dynamic>.from(entry['profile'] as Map),
+          Map<String, dynamic>.from(entry['settings'] as Map),
+        );
+        dynamic tun = await _core!.call('getTunStatus', null);
+        if (tun is String) tun = jsonDecode(tun);
+        row['tunEnabled'] = tun is Map && tun['enabled'] == true;
+        final delays = await nativeMeasureDelays(
+          Map<String, dynamic>.from(entry['profile'] as Map),
+          Map<String, dynamic>.from(entry['settings'] as Map),
+          [entry['server'] as String],
+          useActiveCore: true,
+        );
+        row['delayMs'] = delays[entry['server']];
+        final request = await client
+            .getUrl(Uri.parse('https://www.gstatic.com/generate_204'))
+            .timeout(const Duration(seconds: 12));
+        final response = await request.close().timeout(
+          const Duration(seconds: 12),
+        );
+        row['systemHttpsStatus'] = response.statusCode;
+        await response.drain<void>();
+        dynamic connections = await _core!.call('getConnections', null);
+        if (connections is String) connections = jsonDecode(connections);
+        final items = connections is Map
+            ? connections['connections'] as List? ?? []
+            : const [];
+        row['systemTrafficUsesSelectedServer'] = items.whereType<Map>().any(
+          (value) =>
+              (value['chains'] as List? ?? []).contains(entry['server']) &&
+              (value['metadata'] as Map?)?['host'] == 'www.gstatic.com',
+        );
+        final ip = await nativeIp();
+        row['exitCountry'] = ip['countryCode'];
+        final okay =
+            row['tunEnabled'] == true &&
+            row['systemHttpsStatus'] == 204 &&
+            row['systemTrafficUsesSelectedServer'] == true &&
+            row['delayMs'] is int;
+        if (!okay) passed = false;
+      } catch (error) {
+        passed = false;
+        row['error'] = error.toString();
+      } finally {
+        client.close(force: true);
+        await cancelNativeDelays();
+        await stopNativeVpn();
+      }
+    }
+  } catch (error) {
+    passed = false;
+    report['error'] = error.runtimeType.toString();
+  }
+  report['passed'] = passed;
+  report['closed'] = _core == null;
+  await File(output).writeAsString(jsonEncode(report), flush: true);
+  exit(passed ? 0 : 1);
+}
+
 Future<void> runNativeSelfTest(String output) async {
   try {
     final report = File(output).absolute;
@@ -509,38 +586,62 @@ Future<Map<String, int?>> nativeMeasureDelays(
   Map<String, dynamic> profile,
   Map<String, dynamic> settings,
   List<String> names, {
+  bool useActiveCore = false,
   void Function(String, int?)? onResult,
 }) async {
-  if (_measurement != null) {
+  if (_measurementToken != null) {
     throw StateError('Проверка задержки уже выполняется');
   }
-  final exe = await _coreExecutable(settings);
-  final base = Directory('${(await _appDirectory()).path}/measurements');
-  await base.create(recursive: true);
-  final home = await base.createTemp('batch-');
-  final rpc = CoreRpc();
+  final token = Object();
+  _measurementToken = token;
+  final live = useActiveCore && _core?.isAlive == true ? _core : null;
+  final rpc = live ?? CoreRpc();
+  final owned = live == null;
   _measurement = rpc;
+  _measurementOwned = owned;
+  Directory? home;
   final result = <String, int?>{};
+  bool current() => _measurementToken == token;
   try {
-    for (final name in ['GeoSite.dat', 'geoip.metadb']) {
-      await File('${File(exe).parent.path}/$name').copy('${home.path}/$name');
+    if (owned) {
+      final exe = await _coreExecutable(settings);
+      final base = Directory('${(await _appDirectory()).path}/measurements');
+      await base.create(recursive: true);
+      home = await base.createTemp('batch-');
+      for (final name in ['GeoSite.dat', 'geoip.metadb']) {
+        await File('${File(exe).parent.path}/$name').copy('${home.path}/$name');
+      }
+      if (!current()) return result;
+      await rpc.start(exe, home.path);
+      await _windowsChannel.invokeMethod<bool>('attachCore', rpc.pid);
+      await rpc.call(
+        'initClash',
+        jsonEncode({'home-dir': home.path, 'version': 20}),
+      );
+      final config =
+          Map<String, dynamic>.from(jsonDecode(jsonEncode(profile)) as Map)
+            ..['mixed-port'] = 0
+            ..['mode'] = 'rule'
+            ..['rule'] = ['MATCH,DIRECT'];
+      if (_core?.isAlive == true) {
+        dynamic state = await _core!.call('getTunStatus', null);
+        if (state is String) state = jsonDecode(state);
+        final outbound = state is Map
+            ? state['outboundInterface']?.toString() ?? ''
+            : '';
+        if (outbound.isNotEmpty) {
+          config['interface-name'] = outbound;
+        } else if (state is Map && state['enabled'] == true) {
+          throw StateError(
+            'Для проверки другой подписки отключите VPN: не удалось определить внешний сетевой адаптер.',
+          );
+        }
+      }
+      await applyCoreProfile(rpc, config, tun: false, startListener: false);
     }
-    if (_measurement != rpc) return result;
-    await rpc.start(exe, home.path);
-    await _windowsChannel.invokeMethod<bool>('attachCore', rpc.pid);
-    await rpc.call(
-      'initClash',
-      jsonEncode({'home-dir': home.path, 'version': 20}),
-    );
-    final config =
-        Map<String, dynamic>.from(jsonDecode(jsonEncode(profile)) as Map)
-          ..['mixed-port'] = 0
-          ..['mode'] = 'rule'
-          ..['rule'] = ['MATCH,DIRECT'];
-    await applyCoreProfile(rpc, config, tun: false, startListener: false);
     var cursor = 0;
     Future<void> worker() async {
-      while (_measurement == rpc && cursor < names.length) {
+      while (current() && cursor < names.length) {
         final name = names[cursor++];
         final timeout =
             (settings['pingTimeoutSeconds'] is num
@@ -552,9 +653,9 @@ Future<Map<String, int?>> nativeMeasureDelays(
               rpc.call(method, data, Duration(seconds: timeout + 3)),
           name,
           timeoutMs: timeout * 1000,
-          cancelled: () => _measurement != rpc,
+          cancelled: () => !current(),
         );
-        if (_measurement == rpc) {
+        if (current()) {
           result[name] = value;
           onResult?.call(name, value);
         }
@@ -566,19 +667,31 @@ Future<Map<String, int?>> nativeMeasureDelays(
     );
     return result;
   } finally {
-    if (_measurement == rpc) _measurement = null;
-    await rpc.close();
-    if (home.absolute.uri.toString().startsWith(base.absolute.uri.toString()) &&
-        home.absolute.uri != base.absolute.uri) {
-      await home.delete(recursive: true);
+    if (current()) {
+      _measurementToken = null;
+      _measurement = null;
+      _measurementOwned = false;
+    }
+    if (owned) await rpc.close();
+    if (home != null && await home.exists()) {
+      final base = Directory(
+        '${(await _appDirectory()).path}/measurements',
+      ).absolute;
+      if (home.absolute.uri.toString().startsWith(base.uri.toString()) &&
+          home.absolute.uri != base.uri) {
+        await home.delete(recursive: true);
+      }
     }
   }
 }
 
 Future<void> cancelNativeDelays() async {
   final rpc = _measurement;
+  final owned = _measurementOwned;
+  _measurementToken = null;
   _measurement = null;
-  await rpc?.close();
+  _measurementOwned = false;
+  if (owned) await rpc?.close();
 }
 
 Future<int> nativeDelay(String server) async {
@@ -624,6 +737,7 @@ Future<Map<String, String>> nativeIp() async {
     }
     return {
       'ip': data['ip'].toString(),
+      'countryCode': data['country_code']?.toString() ?? '',
       'location': [
         data['city'],
         data['country'],

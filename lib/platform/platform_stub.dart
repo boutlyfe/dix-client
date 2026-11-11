@@ -52,6 +52,7 @@ Future<Map<String, int?>> nativeMeasureDelays(
   Map<String, dynamic> profile,
   Map<String, dynamic> settings,
   List<String> names, {
+  bool useActiveCore = false,
   void Function(String, int?)? onResult,
 }) async => {};
 Future<void> cancelNativeDelays() async {}
@@ -65,3 +66,8 @@ Future<void> configureAppPreferences(Map<String, dynamic> settings) async {}
 void recordAppEvent(String event) {}
 Future<void> flushNativeLogs() async {}
 Future<void> clearNativeLogs() async {}
+
+Future<void> runNativeVpnSelfTest(
+  String output,
+  List<Map<String, dynamic>> cases,
+) async {}

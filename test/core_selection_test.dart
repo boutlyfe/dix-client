@@ -10,6 +10,72 @@ Map<String, dynamic> group(List<String> children, String now) => {
 };
 
 void main() {
+  test('effective catch-all chooses its actual automatic routing group', () {
+    final source = <String, dynamic>{
+      'proxies': [
+        {'name': 'A'},
+        {'name': 'B'},
+      ],
+      'proxy-groups': [
+        {
+          'name': 'Original',
+          'type': 'select',
+          'proxies': ['A', 'B'],
+        },
+        {
+          'name': 'Forced',
+          'type': 'select',
+          'proxies': ['A'],
+        },
+        {
+          'name': 'Effective',
+          'type': 'url-test',
+          'proxies': ['A', 'B'],
+        },
+      ],
+      'rules': ['MATCH,Original'],
+      'rule': [
+        'DOMAIN,forced.example,Forced',
+        'DOMAIN,main.example,Effective',
+        'MATCH,Effective',
+      ],
+    };
+    final before = jsonEncode(source);
+    expect(mainRoutingGroup(source), 'Effective');
+    final prepared = prepareManualRoutingProfile(source, selectedServer: 'B');
+    expect(prepared.profile['rule'], [
+      'DOMAIN,forced.example,Forced',
+      'DOMAIN,main.example,${prepared.rootGroup}',
+      'MATCH,${prepared.rootGroup}',
+    ]);
+    expect(prepared.profile['proxy-groups'][2]['type'], 'url-test');
+    expect(jsonEncode(source), before);
+  });
+
+  test('explicit direct and reject catch-all policies remain explicit', () {
+    for (final target in ['DIRECT', 'REJECT']) {
+      final source = <String, dynamic>{
+        'proxies': [
+          {'name': 'A'},
+        ],
+        'proxy-groups': [
+          {
+            'name': 'Main',
+            'type': 'select',
+            'proxies': ['A'],
+          },
+        ],
+        'rules': ['DOMAIN,main.example,Main', 'MATCH,$target'],
+      };
+      expect(mainRoutingGroup(source), 'Main');
+      final prepared = prepareManualRoutingProfile(source);
+      expect(prepared.profile['rules'], [
+        'DOMAIN,main.example,${prepared.rootGroup}',
+        'MATCH,$target',
+      ]);
+    }
+  });
+
   test(
     'all traffic mode has an explicit manual route without relying on GLOBAL',
     () {

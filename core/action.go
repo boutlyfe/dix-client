@@ -44,6 +44,9 @@ func handleAction(action *Action, result ActionResult) {
 	case getIsInitMethod:
 		result.success(handleGetIsInit())
 		return
+	case getTunStatusMethod:
+		result.success(handleGetTunStatus())
+		return
 	case forceGcMethod:
 		handleForceGc()
 		result.success(true)

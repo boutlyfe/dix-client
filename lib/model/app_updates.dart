@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const dixVersion = '0.2.3';
+const dixVersion = '0.2.4';
 const defaultUpdateRepository = 'boutlyfe/dix-client';
 bool validReleaseRepository(String value) =>
     RegExp(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(value) &&
